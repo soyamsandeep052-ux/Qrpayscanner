@@ -1,0 +1,19 @@
+{
+  "name": "qr-pay-scanner",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "expo": "~58.0.0",
+    "react": "19.3.0",
+    "react-native": "~0.88.0",
+    "expo-camera": "latest",
+    "@react-native-async-storage/async-storage": "latest",
+    "react-native-google-mobile-ads": "latest",
+    "react-native-safe-area-context": "latest"
+  }
+}
