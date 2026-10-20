@@ -32,6 +32,18 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
 
+      - name: Stop code shrinking from breaking app startup
+        run: |
+          cd android
+          printf '\nandroid.enableMinifyInReleaseBuild=false\nandroid.enableShrinkResourcesInReleaseBuilds=false\n' >> gradle.properties
+          cat >> app/proguard-rules.pro <<'EOF'
+
+          -keep class * extends androidx.room.RoomDatabase { <init>(); }
+          -keep class androidx.work.impl.WorkDatabase_Impl { *; }
+          -keep class androidx.work.** { *; }
+          EOF
+          grep -n "APPLICATION_ID" app/src/main/AndroidManifest.xml || echo "WARNING: AdMob app id missing"
+
       - name: Build APK
         run: cd android && ./gradlew assembleRelease --no-daemon
 
