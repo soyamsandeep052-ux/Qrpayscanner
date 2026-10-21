@@ -219,7 +219,54 @@ function MainScreen() {
   };
 
   // ---------- QR స్కాన్ ----------
+  // QR లోని టెక్స్ట్ UPI లింక్ అయితే UPI యాప్ తెరుస్తుంది
+  const openUpi = useCallback(async (text, fromInAppCamera) => {
+    if (text.toLowerCase().startsWith('upi://')) {
+      pendingPaymentRef.current = true;
+      setScanning(false);
+      try {
+        await Linking.openURL(text);
+      } catch (e) {
+        pendingPaymentRef.current = false;
+        Alert.alert('UPI యాప్ దొరకలేదు', 'మీ ఫోన్‌లో PhonePe / Paytm / GPay లాంటి యాప్ ఉండాలి.');
+      }
+    } else if (fromInAppCamera) {
+      Alert.alert('ఇది UPI QR కాదు', 'దయచేసి పేమెంట్ QR కోడ్ స్కాన్ చేయండి.', [
+        { text: 'మళ్లీ స్కాన్', onPress: () => setScanned(false) },
+        { text: 'రద్దు', style: 'cancel', onPress: () => setScanning(false) },
+      ]);
+    } else {
+      Alert.alert('ఇది UPI QR కాదు', 'దయచేసి పేమెంట్ QR కోడ్ స్కాన్ చేయండి.');
+    }
+  }, []);
+
+  // Google స్కానర్ ఫలితం ఇక్కడికి వస్తుంది
+  useEffect(() => {
+    let sub = null;
+    try {
+      sub = CameraView.onModernBarcodeScanned((event) => {
+        openUpi(String((event && event.data) || '').trim(), false);
+      });
+    } catch (e) {
+      sub = null;
+    }
+    return () => {
+      try {
+        if (sub && sub.remove) sub.remove();
+      } catch (e) {
+        // ignore
+      }
+    };
+  }, [openUpi]);
+
   const startScan = async () => {
+    // ముందు Google స్కానర్ ప్రయత్నిస్తాం (ఫోకస్ బాగా ఉంటుంది)
+    try {
+      await CameraView.launchScanner({ barcodeTypes: ['qr'] });
+      return;
+    } catch (e) {
+      // అది పనిచేయకపోతే యాప్‌లోని కెమెరా వాడతాం
+    }
     if (!permission || !permission.granted) {
       const res = await requestPermission();
       if (!res.granted) {
@@ -231,26 +278,13 @@ function MainScreen() {
     setScanning(true);
   };
 
-  const handleScan = useCallback(async ({ data }) => {
-    setScanned(true);
-    const text = String(data || '').trim();
-
-    if (text.toLowerCase().startsWith('upi://')) {
-      pendingPaymentRef.current = true;
-      setScanning(false);
-      try {
-        await Linking.openURL(text);
-      } catch (e) {
-        pendingPaymentRef.current = false;
-        Alert.alert('UPI యాప్ దొరకలేదు', 'మీ ఫోన్‌లో PhonePe / Paytm / GPay లాంటి యాప్ ఉండాలి.');
-      }
-    } else {
-      Alert.alert('ఇది UPI QR కాదు', 'దయచేసి పేమెంట్ QR కోడ్ స్కాన్ చేయండి.', [
-        { text: 'మళ్లీ స్కాన్', onPress: () => setScanned(false) },
-        { text: 'రద్దు', style: 'cancel', onPress: () => setScanning(false) },
-      ]);
-    }
-  }, []);
+  const handleScan = useCallback(
+    async ({ data }) => {
+      setScanned(true);
+      await openUpi(String(data || '').trim(), true);
+    },
+    [openUpi]
+  );
 
   // ---------- Rewarded యాడ్ చూపించడం ----------
   const watchRewarded = () => {
@@ -493,7 +527,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 40,
     borderRadius: 30,
-  },
+    },
   cancelText: {
     fontSize: 17,
     fontWeight: '700',
