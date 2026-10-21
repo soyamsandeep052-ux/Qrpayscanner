@@ -1,77 +1,82 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking, Alert, Vibration } from 'react-native';
+import { View, Text, StyleSheet, Linking, Alert, TouchableOpacity } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { BannerAd, BannerAdSize, TestIds, InterstitialAd, AdEventType } from 'react-native-google-mobile-ads';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BannerAd, BannerAdSize, TestIds, InterstitialAd, AdEventType, RewardedAd, RewardedAdEventType } from 'react-native-google-mobile-ads';
 
 const bannerId = TestIds.BANNER;
 const interstitialId = TestIds.INTERSTITIAL;
+const rewardedId = TestIds.REWARDED;
+
 const interstitial = InterstitialAd.createForAdRequest(interstitialId);
+const rewarded = RewardedAd.createForAdRequest(rewardedId);
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [coins, setCoins] = useState(0);
 
+  // Coins load cheyadam
   useEffect(() => {
-    const unsubscribe = interstitial.addAdEventListener(AdEventType.LOADED, () => {});
+    AsyncStorage.getItem('coins').then(val => {
+      if(val) setCoins(parseInt(val));
+    });
     interstitial.load();
-    return unsubscribe;
-  }, []);
+    rewarded.load();
 
-  const startScan = async () => {
-    const res = await requestPermission();
-    if (!res.granted) {
-      Alert.alert("Camera Permission Kavali");
-      return;
-    }
-    setScanned(false);
-    setScanning(true);
+    const unsubRewarded = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, reward => {
+      const newCoins = coins + 20;
+      setCoins(newCoins);
+      AsyncStorage.setItem('coins', newCoins.toString());
+      Alert.alert('Congrats!', '20 Coins vachayi!');
+    });
+    rewarded.addAdEventListener(AdEventType.CLOSED, () => rewarded.load());
+    interstitial.addAdEventListener(AdEventType.CLOSED, () => interstitial.load());
+
+    return () => unsubRewarded();
+  }, [coins]);
+
+  const addCoins = async (num) => {
+    const newCoins = coins + num;
+    setCoins(newCoins);
+    await AsyncStorage.setItem('coins', newCoins.toString());
   };
 
-  const onScanned = ({ data }) => {
+  if (!permission) return <View style={{flex:1, backgroundColor:'black'}} />;
+  if (!permission.granted) {
+    requestPermission();
+    return <View style={{flex:1, backgroundColor:'black'}} />;
+  }
+
+  const handleScan = (result) => {
     if (scanned) return;
     setScanned(true);
-    setScanning(false);
-    Vibration.vibrate(100);
-
-    if (interstitial.loaded) {
-      interstitial.show();
-      interstitial.load();
+    const data = result.data;
+    if (data) {
+      addCoins(10);
+      if (data.startsWith('upi://') || data.startsWith('http')) {
+        Linking.openURL(data);
+        if(interstitial.loaded) interstitial.show();
+      } else {
+        Alert.alert('QR Data', data);
+      }
     }
-
-    if (data.startsWith('upi://')) {
-      Linking.openURL(data);
-    } else {
-      Linking.openURL(data).catch(() => Alert.alert("Scan", data));
-    }
+    setTimeout(() => setScanned(false), 2000);
   };
 
   return (
     <View style={styles.container}>
-      {scanning ? (
-        <CameraView 
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={scanned ? undefined : onScanned}
-        >
-          <View style={styles.overlay}>
-            <Text style={styles.scanText}>QR Meeda Pettandi</Text>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setScanning(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </CameraView>
-      ) : (
-        <View style={styles.center}>
-          <Text style={styles.title}>QR Pay Scanner</Text>
-          <Text style={styles.sub}>UPI QR ni Instant ga Scan chey</Text>
-          <TouchableOpacity style={styles.scanBtn} onPress={startScan}>
-            <Text style={styles.btnText}>SCAN CHEYI</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <View style={styles.banner}>
+      <CameraView style={styles.camera} facing="back" onBarcodeScanned={handleScan} barcodeScannerSettings={{barcodeTypes: ["qr"]}} />
+      
+      {/* Top Coins View */}
+      <View style={styles.topBar}>
+        <Text style={styles.coinText}>🪙 Coins: {coins}</Text>
+        <TouchableOpacity style={styles.watchAdBtn} onPress={() => { if(rewarded.loaded) rewarded.show(); else Alert.alert('Ad loading... wait'); }}>
+          <Text style={styles.btnText}>Watch Ad +20 Coins</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.adContainer}>
         <BannerAd unitId={bannerId} size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER} />
       </View>
     </View>
@@ -79,15 +84,11 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 10 },
-  sub: { color: '#94a3b8', fontSize: 16, marginBottom: 30 },
-  scanBtn: { backgroundColor: '#22c55e', paddingVertical: 18, paddingHorizontal: 50, borderRadius: 15 },
-  btnText: { color: '#000', fontWeight: 'bold', fontSize: 18 },
-  overlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 120 },
-  scanText: { color: '#fff', fontSize: 18, marginBottom: 20, fontWeight: '600' },
-  cancelBtn: { backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 40, borderRadius: 30 },
-  cancelText: { color: '#000', fontWeight: 'bold' },
-  banner: { position: 'absolute', bottom: 0, width: '100%', alignItems: 'center' }
+  container: { flex: 1 },
+  camera: { flex: 1, width: '100%' },
+  topBar: { position: 'absolute', top: 50, left: 10, right: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  coinText: { color: 'white', backgroundColor: 'rgba(0,0,0,0.7)', padding: 10, borderRadius: 20, fontWeight: 'bold', fontSize: 16 },
+  watchAdBtn: { backgroundColor: '#FFD700', padding: 10, borderRadius: 20 },
+  btnText: { color: 'black', fontWeight: 'bold' },
+  adContainer: { position: 'absolute', bottom: 0, width: '100%', alignItems: 'center' }
 });
