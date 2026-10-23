@@ -7,13 +7,22 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.qrpay.scanner",
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "plugins": [
       [
         "expo-camera",
         {
           "cameraPermission": "QR కోడ్ స్కాన్ చేయడానికి కెమెరా అనుమతి కావాలి"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "QR ఫోటో తీయడానికి కెమెరా అనుమతి కావాలి",
+          "microphonePermission": false
         }
       ],
       [
