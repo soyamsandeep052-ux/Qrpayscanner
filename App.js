@@ -9,8 +9,12 @@ import {
   AppState,
   StatusBar,
 } from 'react-native';
+import { Buffer } from 'buffer';
+import jsQR from 'jsqr';
+import jpeg from 'jpeg-js';
 import { CameraView, Camera, scanFromURLAsync, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import mobileAds, {
@@ -50,22 +54,116 @@ const DAILY_REWARD_LIMIT = 3; // రోజుకు రివార్డ్ య
 const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యాడ్‌కు కాయిన్స్
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2 పేమెంట్లకు ఒక యాడ్
 
-const APP_BUILD = 4; // యాప్ వెర్షన్ (ఏ వెర్షన్ ఇన్‌స్టాల్ అయిందో తెలుసుకోవడానికి)
+const APP_BUILD = 5; // యాప్ వెర్షన్ (ఏ వెర్షన్ ఇన్‌స్టాల్ అయిందో తెలుసుకోవడానికి)
 
 const todayStr = () => new Date().toDateString();
 
-// ఫోటో నుంచి QR చదివే ఫంక్షన్
-const decodeQrFromImage = async (uri) => {
+if (typeof global !== 'undefined' && !global.Buffer) {
+  global.Buffer = Buffer;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// =====================================================================
+// QR చదవడం - Google MLKit లేని ఫోన్లలో కూడా పనిచేసేలా
+// ---------------------------------------------------------------------
+// 1) ముందు ఫోన్‌లో MLKit ఉంటే అది వాడతాం (వేగంగా ఉంటుంది)
+// 2) MLKit లేకపోతే (మీ ఫోన్‌లో లాగా), యాప్ సొంతంగా చదువుతుంది (jsQR)
+// =====================================================================
+let mlkitWorks = true;
+
+const decodeWithMlkit = async (uri) => {
+  if (!mlkitWorks) return '';
   const fn =
     (Camera && typeof Camera.scanFromURLAsync === 'function' && Camera.scanFromURLAsync) ||
     (typeof scanFromURLAsync === 'function' && scanFromURLAsync) ||
     null;
-  if (!fn) throw new Error('ఈ ఫోన్‌లో ఫోటో స్కాన్ అందుబాటులో లేదు');
-  const results = await fn(uri, ['qr']);
-  if (results && results.length > 0 && results[0].data) {
-    return String(results[0].data).trim();
+  if (!fn) {
+    mlkitWorks = false;
+    return '';
+  }
+  try {
+    const results = await fn(uri, ['qr']);
+    if (results && results.length > 0 && results[0].data) {
+      return String(results[0].data).trim();
+    }
+    return '';
+  } catch (e) {
+    // ఈ ఫోన్‌లో MLKit లేదు - ఇక ప్రయత్నించం
+    mlkitWorks = false;
+    return '';
+  }
+};
+
+const B64_TABLE = (() => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const t = new Uint8Array(256).fill(255);
+  for (let i = 0; i < chars.length; i += 1) t[chars.charCodeAt(i)] = i;
+  return t;
+})();
+
+const base64ToBytes = (b64) => {
+  const vals = [];
+  for (let i = 0; i < b64.length; i += 1) {
+    const v = B64_TABLE[b64.charCodeAt(i) & 255];
+    if (v !== 255) vals.push(v);
+  }
+  const out = new Uint8Array(Math.floor((vals.length * 3) / 4));
+  let p = 0;
+  for (let i = 0; i < vals.length; i += 4) {
+    const a = vals[i];
+    const b = vals[i + 1];
+    const c = vals[i + 2];
+    const d = vals[i + 3];
+    if (b !== undefined) out[p++] = (a << 2) | (b >> 4);
+    if (c !== undefined) out[p++] = ((b & 15) << 4) | (c >> 2);
+    if (d !== undefined) out[p++] = ((c & 3) << 6) | d;
+  }
+  return out;
+};
+
+// ఫోటోని చిన్నదిగా చేసి JPEG (base64) గా మారుస్తుంది
+const shrinkToJpegBase64 = async (uri, width) => {
+  const IM = ImageManipulator.ImageManipulator;
+  if (IM && typeof IM.manipulate === 'function') {
+    const ctx = IM.manipulate(uri);
+    ctx.resize({ width });
+    const rendered = await ctx.renderAsync();
+    const saved = await rendered.saveAsync({
+      format: ImageManipulator.SaveFormat.JPEG,
+      compress: 0.85,
+      base64: true,
+    });
+    return saved.base64 || '';
+  }
+  const saved = await ImageManipulator.manipulateAsync(uri, [{ resize: { width } }], {
+    format: ImageManipulator.SaveFormat.JPEG,
+    compress: 0.85,
+    base64: true,
+  });
+  return saved.base64 || '';
+};
+
+const decodeWithJs = async (uri, tryInverted) => {
+  const widths = [900, 560];
+  for (let i = 0; i < widths.length; i += 1) {
+    const b64 = await shrinkToJpegBase64(uri, widths[i]);
+    if (!b64) continue;
+    const img = jpeg.decode(base64ToBytes(b64), { useTArray: true, formatAsRGBA: true });
+    const pixels = new Uint8ClampedArray(img.data.buffer, img.data.byteOffset, img.data.byteLength);
+    const code = jsQR(pixels, img.width, img.height, {
+      inversionAttempts: tryInverted ? 'attemptBoth' : 'dontInvert',
+    });
+    if (code && code.data) return String(code.data).trim();
   }
   return '';
+};
+
+// ఫోటో నుంచి QR చదివే ఫంక్షన్
+const decodeQrFromImage = async (uri, tryInverted = true) => {
+  const fromMlkit = await decodeWithMlkit(uri);
+  if (fromMlkit) return fromMlkit;
+  return decodeWithJs(uri, tryInverted);
 };
 
 const saveValue = async (key, value) => {
@@ -83,6 +181,9 @@ function MainScreen() {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [info, setInfo] = useState('');
+  const [cameraReady, setCameraReady] = useState(false);
+  const [scanDebug, setScanDebug] = useState('');
+  const cameraRef = useRef(null);
 
   const [adsReady, setAdsReady] = useState(false);
   const [rewardedLoaded, setRewardedLoaded] = useState(false);
@@ -285,10 +386,11 @@ function MainScreen() {
         await CameraView.launchScanner({ barcodeTypes: ['qr'] });
         return;
       } catch (e) {
-        setInfo('Google స్కానర్ తెరవలేదు: ' + String((e && e.message) || e));
+        // Google స్కానర్ తెరవలేదు - యాప్ సొంత కెమెరా స్కానర్ వాడతాం
+        setInfo('');
       }
     } else {
-      setInfo('ఈ ఫోన్‌లో Google స్కానర్ లేదు. కెమెరా మసకగా ఉంటే "ఫోటో తీసి స్కాన్" వాడండి.');
+      setInfo('');
     }
     if (!permission || !permission.granted) {
       const res = await requestPermission();
@@ -298,6 +400,8 @@ function MainScreen() {
       }
     }
     setScanned(false);
+    setCameraReady(false);
+    setScanDebug('');
     setScanning(true);
   };
 
@@ -308,6 +412,47 @@ function MainScreen() {
     },
     [openUpi]
   );
+
+  // ---------- కెమెరా నుంచి వరుసగా ఫోటోలు తీసి QR వెతకడం ----------
+  // (MLKit లేని ఫోన్లలో కూడా ఇది పనిచేస్తుంది)
+  useEffect(() => {
+    if (!scanning || !cameraReady || scanned) return undefined;
+    let cancelled = false;
+
+    const loop = async () => {
+      let failures = 0;
+      while (!cancelled) {
+        try {
+          if (cameraRef.current) {
+            const pic = await cameraRef.current.takePictureAsync({
+              quality: 0.5,
+              skipProcessing: true,
+              shutterSound: false,
+              exif: false,
+            });
+            if (cancelled) return;
+            const text = pic && pic.uri ? await decodeQrFromImage(pic.uri, false) : '';
+            if (cancelled) return;
+            failures = 0;
+            if (text) {
+              handleScan({ data: text });
+              return;
+            }
+          }
+        } catch (e) {
+          failures += 1;
+          if (!cancelled) setScanDebug('కెమెరా లోపం: ' + String((e && e.message) || e));
+          if (failures >= 5) return;
+        }
+        await sleep(250);
+      }
+    };
+
+    loop();
+    return () => {
+      cancelled = true;
+    };
+  }, [scanning, cameraReady, scanned, handleScan]);
 
   // ---------- ఫోన్ సొంత కెమెరాతో ఫోటో తీసి స్కాన్ ----------
   const scanFromPhoto = async () => {
@@ -404,16 +549,17 @@ function MainScreen() {
       <View style={styles.cameraWrap}>
         <StatusBar barStyle="light-content" />
         <CameraView
+          ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={scanned ? undefined : handleScan}
+          onCameraReady={() => setCameraReady(true)}
         />
         <View style={[styles.cameraTop, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.cameraHint}>QR కోడ్‌ను ఫ్రేమ్ మధ్యలో ఉంచండి</Text>
           <Text style={styles.cameraSub}>
-            మసకగా ఉంటే వెనక్కి వెళ్లి "ఫోటో తీసి స్కాన్" వాడండి
+            ఫోన్‌ను స్థిరంగా పట్టుకోండి, కొద్ది సెకన్లలో స్కాన్ అవుతుంది
           </Text>
+          {scanDebug ? <Text style={styles.cameraSub}>{scanDebug}</Text> : null}
         </View>
         <View style={styles.frame} />
         <TouchableOpacity
