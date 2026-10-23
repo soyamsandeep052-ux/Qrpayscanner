@@ -14,6 +14,7 @@
     "expo-camera": "latest",
     "@react-native-async-storage/async-storage": "latest",
     "react-native-google-mobile-ads": "latest",
-    "react-native-safe-area-context": "latest"
+    "react-native-safe-area-context": "latest",
+    "expo-image-picker": "latest"
   }
 }
