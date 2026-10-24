@@ -6,25 +6,9 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
-      "package": "com.qrpay.scanner",
-      "permissions": [
-        "CAMERA"
-      ]
+      "package": "com.qrpay.scanner"
     },
     "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "QR కోడ్ స్కాన్ చేయడానికి కెమెరా అనుమతి కావాలి"
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "cameraPermission": "QR ఫోటో తీయడానికి కెమెరా అనుమతి కావాలి",
-          "microphonePermission": false
-        }
-      ],
       [
         "react-native-google-mobile-ads",
         {
