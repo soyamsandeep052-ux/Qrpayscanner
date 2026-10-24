@@ -11,14 +11,9 @@
     "expo": "~58.0.0",
     "react": "19.3.0",
     "react-native": "~0.88.0",
-    "expo-camera": "latest",
     "@react-native-async-storage/async-storage": "latest",
     "react-native-google-mobile-ads": "latest",
     "react-native-safe-area-context": "latest",
-    "expo-image-picker": "latest",
-    "expo-image-manipulator": "latest",
-    "jsqr": "^1.4.0",
-    "jpeg-js": "^0.4.4",
-    "buffer": "^6.0.3"
+    "expo-intent-launcher": "latest"
   }
 }
