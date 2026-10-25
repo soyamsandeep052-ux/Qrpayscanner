@@ -48,7 +48,7 @@ const DAILY_REWARD_LIMIT = 3; // రోజుకు రివార్డ్ య
 const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యాడ్‌కు కాయిన్స్
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2 సార్లు UPI యాప్ తెరిచి వచ్చాక ఒక యాడ్
 
-const APP_BUILD = 5; // యాప్ వెర్షన్
+const APP_BUILD = 6; // యాప్ వెర్షన్
 
 // మనం తెరిచే UPI యాప్‌లు
 const UPI_APPS = [
@@ -80,14 +80,14 @@ function MainScreen() {
   const opensRef = useRef(0);
   const rewardUsedRef = useRef(0);
 
-  const pendingRef = useRef(false);
-  const leftRef = useRef(false);
+  const pendingRef = useRef(false); // UPI యాప్ తెరిచాం, తిరిగి రావాలి
+  const leftRef = useRef(false); // నిజంగా మన యాప్ నుంచి బయటకు వెళ్లాం
 
   const interstitialRef = useRef(null);
   const interstitialLoadedRef = useRef(false);
   const rewardedRef = useRef(null);
 
-  // సేవ్ చేసిన డేటా లోడ్
+  // ---------- సేవ్ చేసిన డేటా లోడ్ ----------
   useEffect(() => {
     (async () => {
       try {
@@ -110,7 +110,7 @@ function MainScreen() {
     })();
   }, []);
 
-  // AdMob మొదలుపెట్టడం
+  // ---------- AdMob మొదలుపెట్టడం ----------
   useEffect(() => {
     let alive = true;
     mobileAds()
@@ -124,7 +124,7 @@ function MainScreen() {
     };
   }, []);
 
-  // Interstitial యాడ్
+  // ---------- Interstitial యాడ్ ----------
   useEffect(() => {
     if (!adsReady) return undefined;
     const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {
@@ -151,7 +151,7 @@ function MainScreen() {
     };
   }, [adsReady]);
 
-  // Rewarded యాడ్
+  // ---------- Rewarded యాడ్ ----------
   useEffect(() => {
     if (!adsReady) return undefined;
     const ad = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
@@ -193,7 +193,40 @@ function MainScreen() {
     };
   }, [adsReady]);
 
-  // UPI యాప్ నుంచి తిరిగి వచ్చినప్పుడు లెక్క + యాడ్
+  // ---------- UPI యాప్ నుంచి తిరిగి వచ్చినప్పుడు లెక్క + యాడ్ ----------
+  const finishOpen = async (showAd) => {
+    try {
+      const flag = await AsyncStorage.getItem('pendingOpen');
+      if (flag !== '1') return;
+      await AsyncStorage.setItem('pendingOpen', '0');
+    } catch (e) {
+      if (!pendingRef.current) return;
+    }
+    pendingRef.current = false;
+    leftRef.current = false;
+
+    const n = opensRef.current + 1;
+    opensRef.current = n;
+    setOpens(n);
+    saveValue('opens', n);
+
+    if (showAd && n % INTERSTITIAL_EVERY === 0 && interstitialLoadedRef.current && interstitialRef.current) {
+      try {
+        interstitialRef.current.show();
+      } catch (e) {
+        // ignore
+      }
+    }
+  };
+
+  // యాప్ మళ్లీ మొదలైనప్పుడు (ఫోన్ యాప్‌ను మూసేసి ఉంటే) పెండింగ్ లెక్కను వేయడం
+  useEffect(() => {
+    const t = setTimeout(() => {
+      finishOpen(false);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (!pendingRef.current) return;
@@ -202,21 +235,7 @@ function MainScreen() {
         return;
       }
       if (leftRef.current) {
-        pendingRef.current = false;
-        leftRef.current = false;
-
-        const n = opensRef.current + 1;
-        opensRef.current = n;
-        setOpens(n);
-        saveValue('opens', n);
-
-        if (n % INTERSTITIAL_EVERY === 0 && interstitialLoadedRef.current && interstitialRef.current) {
-          try {
-            interstitialRef.current.show();
-          } catch (e) {
-            // ignore
-          }
-        }
+        finishOpen(true);
       }
     });
     return () => sub.remove();
@@ -241,14 +260,29 @@ function MainScreen() {
     return () => sub.remove();
   }, []);
 
-  // UPI యాప్ తెరవడం
+  // ---------- UPI యాప్ తెరవడం ----------
   const openUpiApp = async (app) => {
     pendingRef.current = true;
     leftRef.current = false;
+    const startedAt = Date.now();
+    try {
+      await AsyncStorage.setItem('pendingOpen', '1');
+    } catch (e) {
+      // ignore
+    }
     try {
       await IntentLauncher.openApplication(app.pkg);
+      // ఈ లైన్ వరకు వచ్చిందంటే: యాప్ తెరిచి, తిరిగి వచ్చేశాం (3 సెకన్ల కంటే ఎక్కువ సేపు ఉంటేనే లెక్క)
+      if (Date.now() - startedAt > 3000) {
+        finishOpen(true);
+      }
     } catch (e) {
       pendingRef.current = false;
+      try {
+        await AsyncStorage.setItem('pendingOpen', '0');
+      } catch (e2) {
+        // ignore
+      }
       Alert.alert(app.name + ' దొరకలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
         { text: 'రద్దు', style: 'cancel' },
         {
@@ -261,7 +295,7 @@ function MainScreen() {
     }
   };
 
-  // Rewarded యాడ్ చూపించడం
+  // ---------- Rewarded యాడ్ చూపించడం ----------
   const watchRewarded = () => {
     if (rewardedRef.current == null) return;
     if (rewardUsedRef.current >= DAILY_REWARD_LIMIT) {
