@@ -48,7 +48,7 @@ const DAILY_REWARD_LIMIT = 3; // రోజుకు రివార్డ్ య
 const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యాడ్‌కు కాయిన్స్
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2వ సారి UPI యాప్ తెరవడానికి ముందు ఒక యాడ్
 
-const APP_BUILD = 7; // యాప్ వెర్షన్
+const APP_BUILD = 8; // యాప్ వెర్షన్
 
 // మనం తెరిచే UPI యాప్‌లు
 const UPI_APPS = [
@@ -75,6 +75,16 @@ function MainScreen() {
   const [coins, setCoins] = useState(0);
   const [opens, setOpens] = useState(0);
   const [rewardUsed, setRewardUsed] = useState(0);
+  const [logText, setLogText] = useState('');
+  const logRef = useRef([]);
+
+  const addLog = (msg) => {
+    const d = new Date();
+    const t = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+    logRef.current = [...logRef.current, t + ' ' + msg].slice(-9);
+    setLogText(logRef.current.join('\n'));
+    saveValue('dbg', JSON.stringify(logRef.current));
+  };
 
   const coinsRef = useRef(0);
   const opensRef = useRef(0);
@@ -98,6 +108,13 @@ function MainScreen() {
         if (d !== todayStr()) {
           r = 0;
         }
+        try {
+          const old = JSON.parse((await AsyncStorage.getItem('dbg')) || '[]');
+          if (Array.isArray(old)) logRef.current = old.slice(-7);
+        } catch (e2) {
+          // ignore
+        }
+        addLog('APP START saved opens=' + o);
         coinsRef.current = c;
         opensRef.current = o;
         rewardUsedRef.current = r;
@@ -202,11 +219,18 @@ function MainScreen() {
     };
   }, [adsReady]);
 
-  // రోజు మారితే రివార్డ్ లెక్క 0 చేయడం
+  // యాప్ స్థితి మారినప్పుడు: లాగ్ + సేవ్ చేసిన లెక్క మళ్లీ చదవడం + రోజు మారితే రివార్డ్ లెక్క 0
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state) => {
+      addLog('state=' + state);
       if (state !== 'active') return;
       try {
+        const o = parseInt((await AsyncStorage.getItem('opens')) || '0', 10) || 0;
+        if (o !== opensRef.current) {
+          addLog('reload opens ' + opensRef.current + '->' + o);
+          opensRef.current = o;
+          setOpens(o);
+        }
         const d = await AsyncStorage.getItem('rewardDate');
         if (d && d !== todayStr()) {
           rewardUsedRef.current = 0;
@@ -224,13 +248,12 @@ function MainScreen() {
   // ---------- UPI యాప్ నిజంగా తెరవడం ----------
   const doLaunch = async (app) => {
     try {
+      addLog('launching ' + app.name);
       await IntentLauncher.openApplication(app.pkg);
+      addLog('launch call finished OK');
     } catch (e) {
-      const n = Math.max(0, opensRef.current - 1);
-      opensRef.current = n;
-      setOpens(n);
-      saveValue('opens', n);
-      Alert.alert(app.name + ' దొరకలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
+      addLog('launch ERROR ' + String(e && e.message ? e.message : e).slice(0, 60));
+      Alert.alert(app.name + ' తెరవడం కుదరలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
         { text: 'రద్దు', style: 'cancel' },
         {
           text: 'Play Store',
@@ -244,11 +267,16 @@ function MainScreen() {
   doLaunchRef.current = doLaunch;
 
   // ---------- బటన్ నొక్కినప్పుడు: లెక్క + (ప్రతి 2వ సారి యాడ్) + UPI యాప్ ----------
-  const openUpiApp = (app) => {
+  const openUpiApp = async (app) => {
     const n = opensRef.current + 1;
     opensRef.current = n;
     setOpens(n);
-    saveValue('opens', n);
+    try {
+      await AsyncStorage.setItem('opens', String(n));
+      addLog('pressed ' + app.name + ' opens=' + n + ' saved');
+    } catch (e) {
+      addLog('pressed, SAVE FAILED');
+    }
 
     if (n % INTERSTITIAL_EVERY === 0 && interstitialLoadedRef.current && interstitialRef.current) {
       pendingLaunchRef.current = app;
@@ -327,6 +355,7 @@ function MainScreen() {
 
       <View style={{ flex: 1 }} />
 
+      <Text style={styles.logText}>{logText}</Text>
       <Text style={styles.versionText}>వెర్షన్ {APP_BUILD}</Text>
 
       {adsReady ? (
@@ -426,6 +455,11 @@ const styles = StyleSheet.create({
     color: '#FFF3DC',
     fontSize: 13,
     marginTop: 4,
+  },
+  logText: {
+    fontSize: 10,
+    color: '#8A90A6',
+    marginBottom: 6,
   },
   versionText: {
     fontSize: 11,
