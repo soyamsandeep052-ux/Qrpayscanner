@@ -48,12 +48,12 @@ const DAILY_REWARD_LIMIT = 3; // రోజుకు రివార్డ్ య
 const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యాడ్‌కు కాయిన్స్
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2వ సారి UPI యాప్ తెరవడానికి ముందు ఒక యాడ్
 
-const APP_BUILD = 8; // యాప్ వెర్షన్
+const APP_BUILD = 9; // యాప్ వెర్షన్
 
 // మనం తెరిచే UPI యాప్‌లు
 const UPI_APPS = [
-  { key: 'phonepe', name: 'PhonePe', pkg: 'com.phonepe.app', color: '#5F259F' },
-  { key: 'gpay', name: 'GPay', pkg: 'com.google.android.apps.nbu.paisa.user', color: '#1A73E8' },
+  { key: 'phonepe', name: 'PhonePe', pkg: 'com.phonepe.app', scheme: 'phonepe://', color: '#5F259F' },
+  { key: 'gpay', name: 'GPay', pkg: 'com.google.android.apps.nbu.paisa.user', scheme: 'tez://', color: '#1A73E8' },
 ];
 
 const todayStr = () => new Date().toDateString();
@@ -245,24 +245,45 @@ function MainScreen() {
     return () => sub.remove();
   }, []);
 
-  // ---------- UPI యాప్ నిజంగా తెరవడం ----------
+  // ---------- UPI యాప్ నిజంగా తెరవడం (ఒకటి కాకపోతే ఇంకోటి ప్రయత్నిస్తుంది) ----------
+  const errText = (e) => String(e && e.message ? e.message : e).slice(-70);
+
   const doLaunch = async (app) => {
+    addLog('launching ' + app.name);
     try {
-      addLog('launching ' + app.name);
       await IntentLauncher.openApplication(app.pkg);
-      addLog('launch call finished OK');
+      addLog('opened (method 1)');
+      return;
     } catch (e) {
-      addLog('launch ERROR ' + String(e && e.message ? e.message : e).slice(0, 60));
-      Alert.alert(app.name + ' తెరవడం కుదరలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
-        { text: 'రద్దు', style: 'cancel' },
-        {
-          text: 'Play Store',
-          onPress: () => {
-            Linking.openURL('market://details?id=' + app.pkg).catch(() => {});
-          },
-        },
-      ]);
+      addLog('m1 ERR ' + errText(e));
     }
+    try {
+      await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
+        packageName: app.pkg,
+        category: 'android.intent.category.LAUNCHER',
+        flags: 268435456,
+      });
+      addLog('opened (method 2)');
+      return;
+    } catch (e) {
+      addLog('m2 ERR ' + errText(e));
+    }
+    try {
+      await Linking.openURL(app.scheme);
+      addLog('opened (method 3)');
+      return;
+    } catch (e) {
+      addLog('m3 ERR ' + errText(e));
+    }
+    Alert.alert(app.name + ' తెరవడం కుదరలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
+      { text: 'రద్దు', style: 'cancel' },
+      {
+        text: 'Play Store',
+        onPress: () => {
+          Linking.openURL('market://details?id=' + app.pkg).catch(() => {});
+        },
+      },
+    ]);
   };
   doLaunchRef.current = doLaunch;
 
