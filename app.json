@@ -9,6 +9,7 @@
       "package": "com.qrpay.scanner"
     },
     "plugins": [
+      "./withQueries.js",
       [
         "react-native-google-mobile-ads",
         {
