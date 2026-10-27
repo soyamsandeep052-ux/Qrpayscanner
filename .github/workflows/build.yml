@@ -29,6 +29,15 @@ jobs:
       - name: Align package versions with Expo SDK
         run: npx expo install --fix
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Make app logo
+        run: |
+          pip install pillow
+          python3 make_logo.py
+
       - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
 
@@ -36,12 +45,12 @@ jobs:
         run: |
           cd android
           printf '\nandroid.enableMinifyInReleaseBuild=false\nandroid.enableShrinkResourcesInReleaseBuilds=false\n' >> gradle.properties
-          cat >> app/proguard-rules.pro <<'EOF'
+          cat >> app/proguard-rules.pro <<'EOF2'
 
           -keep class * extends androidx.room.RoomDatabase { <init>(); }
           -keep class androidx.work.impl.WorkDatabase_Impl { *; }
           -keep class androidx.work.** { *; }
-          EOF
+          EOF2
           grep -n "APPLICATION_ID" app/src/main/AndroidManifest.xml || echo "WARNING: AdMob app id missing"
 
       - name: Build APK
