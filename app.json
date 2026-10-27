@@ -5,8 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./icon.png",
     "android": {
-      "package": "com.qrpay.scanner"
+      "package": "com.qrpay.scanner",
+      "adaptiveIcon": {
+        "foregroundImage": "./adaptive-icon.png",
+        "backgroundColor": "#4B3FE0"
+      }
     },
     "plugins": [
       "./withQueries.js",
