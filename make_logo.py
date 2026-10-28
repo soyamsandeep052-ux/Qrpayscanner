@@ -5,7 +5,7 @@ import io
 
 from PIL import Image, ImageFilter
 
-EXPECTED = "ca254cea53e3396cb5e674d7e921ee3b7244a3a0df586ecc5a83998782a7d160"
+EXPECTED = "ccd832abcdc4de3d0e760cf4f1e8ddcad0bfa48fe621737620d94bd3339e8af6"
 
 body = None
 try:
