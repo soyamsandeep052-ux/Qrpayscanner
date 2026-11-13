@@ -1,7 +1,12 @@
-// Android 11+ లో ఇతర యాప్‌లను (PhonePe, GPay) చూడగలిగేలా అనుమతి ఇస్తుంది
+// Android 11+ లో ఇతర యాప్‌లను (PhonePe, GPay, Paytm, BHIM) చూడగలిగేలా అనుమతి ఇస్తుంది
 const { withAndroidManifest } = require('expo/config-plugins');
 
-const PACKAGES = ['com.phonepe.app', 'com.google.android.apps.nbu.paisa.user'];
+const PACKAGES = [
+  'com.phonepe.app',
+  'com.google.android.apps.nbu.paisa.user',
+  'net.one97.paytm',
+  'in.org.npci.upiapp',
+];
 
 module.exports = function withQueries(config) {
   return withAndroidManifest(config, (cfg) => {
