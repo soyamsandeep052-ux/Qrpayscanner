@@ -24,6 +24,7 @@ import mobileAds, {
 
 // =====================================================================
 // యాడ్ సెట్టింగ్స్ (AdMob settings)
+// ---------------------------------------------------------------------
 // ఇప్పుడు USE_TEST_ADS = true ఉంది, అంటే టెస్ట్ యాడ్స్ వస్తాయి (డబ్బు రాదు).
 // మీ AdMob ఖాతా ఆమోదం అయ్యాక, క్రింద మీ యాడ్ యూనిట్ IDలు పెట్టి
 // USE_TEST_ADS ని false చేయండి.
@@ -47,13 +48,16 @@ const AD_IDS = USE_TEST_ADS
 const DAILY_REWARD_LIMIT = 3; // రోజుకు రివార్డ్ యాడ్స్
 const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యాడ్‌కు కాయిన్స్
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2వ సారి UPI యాప్ తెరవడానికి ముందు ఒక యాడ్
+const UNLOCK_COST = 20; // Paytm / BHIM అన్‌లాక్ చేయడానికి కాయిన్స్
 
-const APP_BUILD = 9; // యాప్ వెర్షన్
+const APP_BUILD = 10; // యాప్ వెర్షన్
 
 // మనం తెరిచే UPI యాప్‌లు
 const UPI_APPS = [
-  { key: 'phonepe', name: 'PhonePe', pkg: 'com.phonepe.app', scheme: 'phonepe://', color: '#5F259F' },
-  { key: 'gpay', name: 'GPay', pkg: 'com.google.android.apps.nbu.paisa.user', scheme: 'tez://', color: '#1A73E8' },
+  { key: 'phonepe', name: 'PhonePe', pkg: 'com.phonepe.app', scheme: 'phonepe://', color: '#5F259F', locked: false },
+  { key: 'gpay', name: 'GPay', pkg: 'com.google.android.apps.nbu.paisa.user', scheme: 'tez://', color: '#1A73E8', locked: false },
+  { key: 'paytm', name: 'Paytm', pkg: 'net.one97.paytm', scheme: 'paytmmp://', color: '#0098C8', locked: true },
+  { key: 'bhim', name: 'BHIM', pkg: 'in.org.npci.upiapp', scheme: 'upi://', color: '#00796B', locked: true },
 ];
 
 const todayStr = () => new Date().toDateString();
@@ -75,20 +79,12 @@ function MainScreen() {
   const [coins, setCoins] = useState(0);
   const [opens, setOpens] = useState(0);
   const [rewardUsed, setRewardUsed] = useState(0);
-  const [logText, setLogText] = useState('');
-  const logRef = useRef([]);
-
-  const addLog = (msg) => {
-    const d = new Date();
-    const t = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-    logRef.current = [...logRef.current, t + ' ' + msg].slice(-9);
-    setLogText(logRef.current.join('\n'));
-    saveValue('dbg', JSON.stringify(logRef.current));
-  };
+  const [unlocked, setUnlocked] = useState([]);
 
   const coinsRef = useRef(0);
   const opensRef = useRef(0);
   const rewardUsedRef = useRef(0);
+  const unlockedRef = useRef([]);
 
   const pendingLaunchRef = useRef(null); // యాడ్ అయ్యాక తెరవాల్సిన UPI యాప్
   const doLaunchRef = useRef(null);
@@ -108,13 +104,15 @@ function MainScreen() {
         if (d !== todayStr()) {
           r = 0;
         }
+        let u = [];
         try {
-          const old = JSON.parse((await AsyncStorage.getItem('dbg')) || '[]');
-          if (Array.isArray(old)) logRef.current = old.slice(-7);
+          const arr = JSON.parse((await AsyncStorage.getItem('unlocked')) || '[]');
+          if (Array.isArray(arr)) u = arr;
         } catch (e2) {
           // ignore
         }
-        addLog('APP START saved opens=' + o);
+        unlockedRef.current = u;
+        setUnlocked(u);
         coinsRef.current = c;
         opensRef.current = o;
         rewardUsedRef.current = r;
@@ -219,18 +217,11 @@ function MainScreen() {
     };
   }, [adsReady]);
 
-  // యాప్ స్థితి మారినప్పుడు: లాగ్ + సేవ్ చేసిన లెక్క మళ్లీ చదవడం + రోజు మారితే రివార్డ్ లెక్క 0
+  // యాప్‌కు తిరిగి వచ్చినప్పుడు: రోజు మారితే రివార్డ్ లెక్క 0
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state) => {
-      addLog('state=' + state);
       if (state !== 'active') return;
       try {
-        const o = parseInt((await AsyncStorage.getItem('opens')) || '0', 10) || 0;
-        if (o !== opensRef.current) {
-          addLog('reload opens ' + opensRef.current + '->' + o);
-          opensRef.current = o;
-          setOpens(o);
-        }
         const d = await AsyncStorage.getItem('rewardDate');
         if (d && d !== todayStr()) {
           rewardUsedRef.current = 0;
@@ -246,16 +237,12 @@ function MainScreen() {
   }, []);
 
   // ---------- UPI యాప్ నిజంగా తెరవడం (ఒకటి కాకపోతే ఇంకోటి ప్రయత్నిస్తుంది) ----------
-  const errText = (e) => String(e && e.message ? e.message : e).slice(-70);
-
   const doLaunch = async (app) => {
-    addLog('launching ' + app.name);
     try {
       await IntentLauncher.openApplication(app.pkg);
-      addLog('opened (method 1)');
       return;
     } catch (e) {
-      addLog('m1 ERR ' + errText(e));
+      // ignore
     }
     try {
       await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
@@ -263,17 +250,15 @@ function MainScreen() {
         category: 'android.intent.category.LAUNCHER',
         flags: 268435456,
       });
-      addLog('opened (method 2)');
       return;
     } catch (e) {
-      addLog('m2 ERR ' + errText(e));
+      // ignore
     }
     try {
       await Linking.openURL(app.scheme);
-      addLog('opened (method 3)');
       return;
     } catch (e) {
-      addLog('m3 ERR ' + errText(e));
+      // ignore
     }
     Alert.alert(app.name + ' తెరవడం కుదరలేదు', 'ఈ యాప్ మీ ఫోన్‌లో ఉందో లేదో చూడండి.', [
       { text: 'రద్దు', style: 'cancel' },
@@ -294,9 +279,8 @@ function MainScreen() {
     setOpens(n);
     try {
       await AsyncStorage.setItem('opens', String(n));
-      addLog('pressed ' + app.name + ' opens=' + n + ' saved');
     } catch (e) {
-      addLog('pressed, SAVE FAILED');
+      // ignore
     }
 
     if (n % INTERSTITIAL_EVERY === 0 && interstitialLoadedRef.current && interstitialRef.current) {
@@ -309,6 +293,40 @@ function MainScreen() {
       }
     }
     doLaunch(app);
+  };
+
+  // ---------- లాక్ అయిన యాప్: కాయిన్స్‌తో అన్‌లాక్ ----------
+  const isOpen = (app) => !app.locked || unlocked.includes(app.key);
+
+  const onAppPress = (app) => {
+    if (isOpen(app)) {
+      openUpiApp(app);
+      return;
+    }
+    if (coinsRef.current < UNLOCK_COST) {
+      Alert.alert(
+        app.name + ' లాక్ అయ్యింది',
+        'అన్‌లాక్ చేయడానికి ' + UNLOCK_COST + ' కాయిన్స్ కావాలి. మీ దగ్గర ' + coinsRef.current +
+          ' ఉన్నాయి. యాడ్ చూసి కాయిన్స్ పొందండి.'
+      );
+      return;
+    }
+    Alert.alert(app.name + ' అన్‌లాక్ చేయాలా?', UNLOCK_COST + ' కాయిన్స్ ఖర్చు అవుతాయి. ఒకసారి అన్‌లాక్ చేస్తే ఎప్పటికీ ఉంటుంది.', [
+      { text: 'వద్దు', style: 'cancel' },
+      {
+        text: 'అన్‌లాక్',
+        onPress: () => {
+          const newCoins = coinsRef.current - UNLOCK_COST;
+          const newList = [...unlockedRef.current, app.key];
+          coinsRef.current = newCoins;
+          unlockedRef.current = newList;
+          setCoins(newCoins);
+          setUnlocked(newList);
+          saveValue('coins', newCoins);
+          saveValue('unlocked', JSON.stringify(newList));
+        },
+      },
+    ]);
   };
 
   // ---------- Rewarded యాడ్ చూపించడం ----------
@@ -350,15 +368,21 @@ function MainScreen() {
         </View>
       </View>
 
-      {UPI_APPS.map((app) => (
-        <TouchableOpacity
-          key={app.key}
-          style={[styles.appBtn, { backgroundColor: app.color }]}
-          onPress={() => openUpiApp(app)}
-        >
-          <Text style={styles.appBtnText}>{app.name} తెరవండి</Text>
-        </TouchableOpacity>
-      ))}
+      {UPI_APPS.map((app) => {
+        const open = isOpen(app);
+        return (
+          <TouchableOpacity
+            key={app.key}
+            style={[styles.appBtn, { backgroundColor: open ? app.color : '#9AA0B4' }]}
+            onPress={() => onAppPress(app)}
+          >
+            <Text style={styles.appBtnText}>
+              {open ? app.name + ' తెరవండి' : '🔒 ' + app.name}
+            </Text>
+            {!open && <Text style={styles.lockSub}>{UNLOCK_COST} కాయిన్స్‌తో అన్‌లాక్ చేయండి</Text>}
+          </TouchableOpacity>
+        );
+      })}
 
       <TouchableOpacity
         style={[styles.rewardBtn, (rewardLeft === 0 || !rewardedLoaded) && styles.rewardBtnOff]}
@@ -376,7 +400,6 @@ function MainScreen() {
 
       <View style={{ flex: 1 }} />
 
-      <Text style={styles.logText}>{logText}</Text>
       <Text style={styles.versionText}>వెర్షన్ {APP_BUILD}</Text>
 
       {adsReady ? (
@@ -446,9 +469,9 @@ const styles = StyleSheet.create({
   },
   appBtn: {
     borderRadius: 18,
-    paddingVertical: 22,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     elevation: 3,
   },
   appBtnText: {
@@ -477,10 +500,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-  logText: {
-    fontSize: 10,
-    color: '#8A90A6',
-    marginBottom: 6,
+  lockSub: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    marginTop: 4,
   },
   versionText: {
     fontSize: 11,
