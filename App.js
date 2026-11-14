@@ -25,16 +25,15 @@ import mobileAds, {
 // =====================================================================
 // యాడ్ సెట్టింగ్స్ (AdMob settings)
 // ---------------------------------------------------------------------
-// ఇప్పుడు USE_TEST_ADS = true ఉంది, అంటే టెస్ట్ యాడ్స్ వస్తాయి (డబ్బు రాదు).
-// మీ AdMob ఖాతా ఆమోదం అయ్యాక, క్రింద మీ యాడ్ యూనిట్ IDలు పెట్టి
-// USE_TEST_ADS ని false చేయండి.
+// USE_TEST_ADS = false అంటే నిజమైన యాడ్స్ (ఆదాయం వస్తుంది).
+// ముఖ్యం: మీ సొంత యాడ్స్‌ను ఎప్పుడూ నొక్కకండి.
 // =====================================================================
-const USE_TEST_ADS = true;
+const USE_TEST_ADS = false;
 
 const MY_AD_UNITS = {
-  banner: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
-  interstitial: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
-  rewarded: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+  banner: 'ca-app-pub-4754645647349432/2487429391',
+  interstitial: 'ca-app-pub-4754645647349432/4040184212',
+  rewarded: 'ca-app-pub-4754645647349432/5565018872',
 };
 
 const AD_IDS = USE_TEST_ADS
@@ -50,7 +49,7 @@ const COINS_PER_REWARD = 10; // ప్రతి రివార్డ్ యా�
 const INTERSTITIAL_EVERY = 2; // ప్రతి 2వ సారి UPI యాప్ తెరవడానికి ముందు ఒక యాడ్
 const UNLOCK_COST = 20; // Paytm / BHIM అన్‌లాక్ చేయడానికి కాయిన్స్
 
-const APP_BUILD = 10; // యాప్ వెర్షన్
+const APP_BUILD = 11; // యాప్ వెర్షన్
 
 // మనం తెరిచే UPI యాప్‌లు
 const UPI_APPS = [
